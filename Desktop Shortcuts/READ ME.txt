@@ -1,0 +1,18 @@
+Move or copy Start Agent47.command and Stop Agent47.command onto your Desktop.
+Keep the Agent47 project folder at /Users/jonahkarafotis/Desktop/MyDev/Agent47.
+
+Double-click Start Agent47.command to start the services and open your browser.
+You can close its Terminal window after it says Agent47 is running.
+Closing the browser does not stop Agent47 or Ollama.
+
+Double-click Stop Agent47.command to stop both services and unload the model.
+Stopping interrupts active tasks and clears in-memory chat, but keeps your model,
+source files and backups. Finish tasks before stopping.
+Other applications using this Ollama server will also lose their connection.
+
+The Stop button inside the chat only cancels the current task. It does not shut
+these services down. If Ollama was separately started as a managed service, it
+may restart; stop that service through its own manager.
+
+These shortcuts contain the current project location. If you move the project,
+edit project_dir in both shortcuts to point to the new location.

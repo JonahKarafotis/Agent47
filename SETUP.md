@@ -28,9 +28,9 @@ If using the Ollama macOS application, set `OLLAMA_NO_CLOUD=1` in its launch env
 
 ## The interface does not open
 
-Use exactly [http://127.0.0.1:8747](http://127.0.0.1:8747). The Host-header check rejects other hostnames, including `localhost`. Keep the app's terminal open.
+Use exactly [http://127.0.0.1:8747](http://127.0.0.1:8747). The Host-header check rejects other hostnames, including `localhost`. The shortcut launches background services, so closing its Terminal window or the browser does not shut them down. Use `Stop-Agent47.command` to stop both services. When you run `.venv/bin/python -m agent47.server` directly instead, keep that terminal open and use Control-C to stop the foreground server.
 
-If the port is already in use, an earlier Agent47 process may still be running. Use that interface or stop the earlier instance before starting another. Neither port nor runtime URL is configurable through the UI yet.
+The launcher normally reuses the existing Agent47 process. If a different process or checkout occupies the port, it reports the conflict and leaves that process alone. Neither port nor runtime URL is configurable through the UI yet.
 
 ## The launcher reports a missing environment
 
@@ -61,7 +61,7 @@ Existing text files must be completely read before replacement. If the file has 
 
 Chat, activity, and approvals are held only in server memory. Restarting the server or opening a workspace again resets the conversation. A 24,000-character serialized context budget also stops long conversations; reopen the workspace to start fresh using the current project files.
 
-File-tool backups survive under the selected project's `.agent47/backups/`. Follow the README's recovery instructions. The launcher writes runtime logs to this repository's `.agent47/ollama.log` when it starts Ollama. Avoid committing either backups or logs.
+File-tool backups survive under the selected project's `.agent47/backups/`. Follow the README's recovery instructions. The launcher writes service logs to this repository's `.agent47/ollama.log` and `.agent47/server.log`. Avoid committing either backups or logs.
 
 ## Public search is unavailable
 

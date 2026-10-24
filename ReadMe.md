@@ -61,11 +61,23 @@ After first-time setup, double-click `Start-Agent47.command`, or run it from the
 ./Start-Agent47.command
 ```
 
-The launcher uses `.venv`, starts Ollama if it cannot reach an existing instance, and starts the app. It sets cloud features off for the Ollama process it launches; it does not change an existing Ollama server's environment. Runtime logs from an Ollama process started by the launcher are written to `.agent47/ollama.log`.
+The launcher uses `.venv`, reuses services already running, starts any missing services in the background, and opens your default browser. Repeated launches do not intentionally create duplicate servers. It sets cloud features off for the Ollama process it launches; it does not change an existing Ollama server's environment. Logs are written to `.agent47/ollama.log` and `.agent47/server.log` for services started by the launcher.
 
-Open [http://127.0.0.1:8747](http://127.0.0.1:8747) yourself and keep the launcher terminal open. Use this exact address rather than `localhost`, because the server validates the Host header. To stop the app, press Control-C in that terminal. The launcher also stops the Ollama process if it started that process.
+The interface opens at [http://127.0.0.1:8747](http://127.0.0.1:8747). Use this exact address rather than `localhost`, because the server validates the Host header. You can close the launcher's Terminal window once startup finishes: services are detached and keep running.
 
-If Ollama is already running, you can start just the app:
+For movable shortcuts, copy **Start Agent47.command** and **Stop Agent47.command** from `Desktop Shortcuts/` onto your Desktop. They point to this machine's current repository path; update `project_dir` inside both files if you relocate the project.
+
+Closing the browser tab does **not** stop Agent47 or Ollama. To shut down both, double-click **Stop Agent47.command** or run:
+
+```sh
+./Stop-Agent47.command
+```
+
+Shutdown interrupts active tasks, closes the server, and stops the local Ollama runtime and its model processes. Finish work first. In-memory chat is cleared; downloaded models, files and backups remain. Other applications sharing this Ollama server will disconnect too. The chat's **Stop** button only cancels a task, not the services.
+
+The stop helper verifies process identities and the Agent47 checkout before signaling them. An externally managed Ollama application/service may need to be quit through its own manager, especially if it automatically restarts.
+
+If Ollama is already running, you can start just the app in the foreground (keep this terminal open; Control-C stops this foreground server):
 
 ```sh
 .venv/bin/python -m agent47.server
@@ -151,7 +163,9 @@ This version uses bounded file listing and plain text search for context. Embedd
 | `agent47/core.py` | Ollama client, workspace tools, command policy/sandbox, web search, and agent loop |
 | `agent47/server.py` | Loopback HTTP server, model/workspace setup, chat, approvals, and stop endpoints |
 | `agent47/static/` | Browser interface; no build process required |
-| `Start-Agent47.command` | macOS launcher for the local runtime and app |
+| `Start-Agent47.command` / `Stop-Agent47.command` | Start/open or shut down local services |
+| `agent47/launcher.py` | Service startup, identity checks, readiness checks, and shutdown |
+| `Desktop Shortcuts/` | Movable shortcuts pointing to this machine's repository location |
 | `requirements.txt` | Pinned PDF extraction dependency |
 | `tests/test_agent.py` | Automated tests for tools, policies, PDF extraction, and HTTP access checks |
 | `examples/demo/` | Small Python project for exploration and smoke tests |
