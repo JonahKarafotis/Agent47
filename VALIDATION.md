@@ -21,3 +21,10 @@ This is a first working prototype. See SETUP.md for capabilities, isolation limi
 - Application suite: 23 passed, 1 macOS-only skip (24 total). Existing demo suite: 2 passed. Live static assets returned HTTP 200; an unauthenticated state request returned HTTP 403.
 - Docker Desktop was absent. Confirmed command execution reports the missing dependency and does not fall back to host execution. Live container execution remains unverified. macOS was not rerun on this Windows machine.
 - Earlier sandboxed checks incorrectly suggested Ollama was absent; inspection with normal system access confirmed its existing standard Windows installation. No Ollama upgrade was needed.
+
+
+## Guided model setup integrated on Windows
+
+Merged origin/main commit 2ae14d6 into windows-support, preserving the Windows launcher, command isolation and existing macOS behavior. The combined application suite passed 32 tests with one macOS-only skip (33 total).
+
+Restarted the local Agent47 server and verified the new Install a local model panel in the browser. Both Qwen3 8B and 4B options appeared. Clicking Approve & download for the existing qwen3:8b model exercised the real Ollama pull endpoint, progress display, local capability validation and model selection, ending in the installed state. Existing model data was reused; this check did not perform a fresh multi-gigabyte transfer. Docker execution remains unverified on this machine.
