@@ -22,7 +22,10 @@ class WorkspaceTests(unittest.TestCase):
     def test_escape_and_secret_rejected(self):
         for name in ['../outside', '/etc/passwd', '.git/config', '.env.local', '.ssh/id_rsa']:
             with self.assertRaises(ValueError): self.workspace.path(name)
-        (self.root / 'escape').symlink_to('/etc')
+        try:
+            (self.root / 'escape').symlink_to(Path(self.directory.name).parent, target_is_directory=True)
+        except OSError:
+            return  # Windows may require Developer Mode for symlinks.
         with self.assertRaises(ValueError): self.workspace.read('escape/passwd')
 
     def test_edit_has_diff_and_recoverable_original(self):

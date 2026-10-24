@@ -10,7 +10,8 @@ from agent47 import launcher
 
 class LauncherTests(unittest.TestCase):
     def test_start_reuses_services_without_duplicates(self):
-        with patch.object(launcher, 'listener', side_effect=[11, 22]), \
+        with patch.object(Path, 'exists', return_value=True), \
+             patch.object(launcher, 'listener', side_effect=[11, 22]), \
              patch.object(launcher, 'is_agent', return_value=True), \
              patch.object(launcher, 'request', return_value={}), \
              patch.object(launcher, 'spawn') as spawn, \
@@ -22,11 +23,13 @@ class LauncherTests(unittest.TestCase):
     def test_start_new_services_disables_cloud_and_waits_for_readiness(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            (root / '.venv/bin').mkdir(parents=True)
-            (root / '.venv/bin/python').touch()
+            python = root / ('.venv/Scripts/python.exe' if launcher.WINDOWS else '.venv/bin/python')
+            python.parent.mkdir(parents=True)
+            python.touch()
             with patch.object(launcher, 'ROOT', root), \
                  patch.object(launcher, 'listener', return_value=None), \
                  patch.object(launcher, 'spawn') as spawn, \
+                 patch.object(launcher, 'ollama_executable', return_value='ollama'), \
                  patch.object(launcher, 'wait_ready') as ready:
                 launcher.start(open_browser=False)
                 self.assertEqual(spawn.call_count, 2)

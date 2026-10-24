@@ -78,7 +78,7 @@ class Workspace:
         if path.exists():
             if path.stat().st_size > 200_000:
                 raise ValueError('Automatic edits are limited to files under 200 KB.')
-            before = path.read_text()
+            before = path.read_text(encoding='utf-8')
         else:
             before = ''
         if len(content.encode()) > 200_000:
@@ -87,10 +87,10 @@ class Workspace:
         # These backups cover file-tool edits, not changes made by subprocess commands.
         backup = self.root / '.agent47' / 'backups' / str(uuid.uuid4())
         backup.mkdir(parents=True)
-        (backup / 'before.txt').write_text(before)
-        (backup / 'metadata.json').write_text(json.dumps({'path': name, 'existed': path.exists()}))
+        (backup / 'before.txt').write_text(before, encoding='utf-8')
+        (backup / 'metadata.json').write_text(json.dumps({'path': name, 'existed': path.exists()}), encoding='utf-8')
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content)
+        path.write_text(content, encoding='utf-8')
         # A unified diff shows removed (-) and added (+) lines in the browser's tool log.
         return ''.join(difflib.unified_diff(before.splitlines(True), content.splitlines(True), fromfile=name, tofile=name))[:16000] or 'No changes.'
 
@@ -100,11 +100,49 @@ def command_needs_approval(argv):
     return argv not in (["python3", "-m", "unittest", "discover"], ["cargo", "check"], ["cargo", "test"], ["dotnet", "test", "--no-restore"])
 
 
+def run_windows_command(root, argv, approved):
+    """Use a local Linux container; never fall back to unrestricted host execution."""
+    name = 'agent47-' + uuid.uuid4().hex
+    root = Path(root).resolve()
+    image = os.environ.get('AGENT47_COMMAND_IMAGE', 'python:3.12-slim')
+    command = ['docker', 'run', '--rm', '--pull=never', '--name', name,
+               '--network=none', '--read-only', '--cap-drop=ALL',
+               '--security-opt=no-new-privileges', '--pids-limit=128',
+               '--memory=2g', '--cpus=2', '--tmpfs', '/tmp:rw,nosuid,size=256m',
+               '-e', 'HOME=/tmp', '-e', 'PYTHONDONTWRITEBYTECODE=1',
+               '--mount', f'type=bind,source={root},target=/workspace' + ('' if approved else ',readonly'),
+               '--workdir', '/workspace']
+    # Never allow command writes to policy, history, or repository metadata.
+    for protected in ['.git', '.agents', '.codex', '.agent47']:
+        path = root / protected
+        if path.exists():
+            command += ['--mount', f'type=bind,source={path},target=/workspace/{protected},readonly']
+    command += [image, *argv]
+    try:
+        with tempfile.TemporaryFile() as output:
+            process = subprocess.Popen(command, stdout=output, stderr=subprocess.STDOUT)
+            try:
+                process.wait(timeout=90)
+            except subprocess.TimeoutExpired:
+                try:
+                    subprocess.run(['docker', 'rm', '-f', name], capture_output=True, timeout=15, check=True)
+                finally:
+                    process.kill()
+                    process.wait()
+                return {'error': 'Command exceeded 90 seconds and was stopped.'}
+            output.seek(0)
+            return {'exit_code': process.returncode, 'output': output.read(24000).decode(errors='replace')}
+    except FileNotFoundError:
+        raise ValueError('Windows command execution requires Docker Desktop with Linux containers. See SETUP.md.')
+
+
 def run_command(root, argv, approved=False):
     if not isinstance(argv, list) or not argv or not all(isinstance(a, str) and '\x00' not in a for a in argv):
         raise ValueError('Command must be a list of arguments.')
     if command_needs_approval(argv) and not approved:
         raise ValueError('Command requires approval.')
+    if os.name == 'nt':
+        return run_windows_command(root, argv, approved)
     if not Path('/usr/bin/sandbox-exec').exists():
         raise ValueError('Command isolation requires macOS sandbox-exec; execution is unavailable on this system.')
     # Commands get a disposable HOME/TMPDIR instead of the normal user environment.
@@ -215,7 +253,7 @@ Do not modify .git, credentials, policy files or the agent itself. Stop when tas
             text = w.read(args['path'])
             path = w.path(args['path'])
             if path.suffix.lower() != '.pdf' and path.stat().st_size <= 64000:
-                full = path.read_text()
+                full = path.read_text(encoding='utf-8')
                 if len(full) <= 16000:
                     self.read_versions[str(path)] = full
             return text
@@ -234,7 +272,7 @@ Do not modify .git, credentials, policy files or the agent itself. Stop when tas
         # Compare with the last complete read to avoid overwriting an intervening edit.
         if name == 'write_file':
             path = w.path(args['path'])
-            if path.exists() and self.read_versions.get(str(path)) != path.read_text():
+            if path.exists() and self.read_versions.get(str(path)) != path.read_text(encoding='utf-8'):
                 raise ValueError('Read the entire current file before editing. Files longer than 16000 characters cannot be automatically replaced.')
             result = w.write(args['path'], args['content'])
             self.read_versions[str(path)] = args['content']
@@ -243,7 +281,7 @@ Do not modify .git, credentials, policy files or the agent itself. Stop when tas
             if not approved: raise ValueError('Deletion requires approval.')
             path = w.path(args['path'])
             if not path.is_file(): raise ValueError('Only single files may be deleted.')
-            w.write(args['path'], path.read_text())  # Keep a recoverable backup.
+            w.write(args['path'], path.read_text(encoding='utf-8'))  # Keep a recoverable backup.
             path.unlink()
             return 'Deleted file; backup retained in .agent47/backups.'
         if name == 'run_command': return run_command(w.root, args['argv'], approved)

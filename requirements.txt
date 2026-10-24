@@ -1,2 +1,5 @@
 # Local PDF text extraction.
 pypdf==6.21.2
+
+# Windows service discovery and safe process-tree shutdown.
+psutil>=6.0,<8; sys_platform == "win32"

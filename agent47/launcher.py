@@ -1,14 +1,27 @@
-"""Start and stop local services for the movable macOS shortcuts."""
+"""Start and stop local services for the macOS and Windows shortcuts."""
 import argparse
 import json
 import os
 from pathlib import Path
 import shlex
+import shutil
 import signal
 import subprocess
 import time
 import urllib.request
 import webbrowser
+
+WINDOWS = os.name == "nt"
+if WINDOWS:
+    import psutil
+    PROCESS_ERRORS = (psutil.Error,)
+else:
+    PROCESS_ERRORS = ()
+
+def windows_process(pid):
+    import psutil
+    return psutil.Process(pid)
+
 
 ROOT = Path(__file__).resolve().parent.parent
 URL = 'http://127.0.0.1:8747'
@@ -26,6 +39,15 @@ def request(url, body=None, token=None):
 
 
 def listener(port):
+    if WINDOWS:
+        import psutil
+        pids = {c.pid for c in psutil.net_connections(kind='tcp')
+                if c.status == psutil.CONN_LISTEN and c.laddr.port == port}
+        if None in pids:
+            raise RuntimeError('Cannot identify the listener; no service was changed.')
+        if len(pids) > 1:
+            raise RuntimeError(f'More than one process listens on port {port}; stop them manually.')
+        return next(iter(pids)) if pids else None
     # Find only processes listening on the service port, never every Python process.
     result = subprocess.run(['/usr/sbin/lsof', '-nP', f'-iTCP:{port}', '-sTCP:LISTEN', '-t'],
                             capture_output=True, text=True)
@@ -36,11 +58,22 @@ def listener(port):
 
 
 def command(pid):
+    if WINDOWS:
+        import psutil
+        try:
+            return subprocess.list2cmdline(windows_process(pid).cmdline())
+        except psutil.NoSuchProcess:
+            return ''
     result = subprocess.run(['/bin/ps', '-p', str(pid), '-o', 'command='], capture_output=True, text=True)
     return result.stdout.strip()
 
 
 def is_agent(pid):
+    if WINDOWS:
+        process = windows_process(pid)
+        args = process.cmdline()
+        return (any(args[i:i + 2] == ['-m', 'agent47.server'] for i in range(len(args)))
+                and Path(process.cwd()).resolve() == ROOT)
     args = shlex.split(command(pid))
     # Also check the working directory so another Agent47 checkout is not stopped.
     cwd = subprocess.run(['/usr/sbin/lsof', '-a', '-p', str(pid), '-d', 'cwd', '-Fn'],
@@ -51,6 +84,9 @@ def is_agent(pid):
 
 
 def is_ollama(pid):
+    if WINDOWS:
+        args = windows_process(pid).cmdline()
+        return len(args) == 2 and Path(args[0]).name.lower() == 'ollama.exe' and args[1] == 'serve'
     args = shlex.split(command(pid))
     return len(args) >= 2 and Path(args[0]).name == 'ollama' and args[1] == 'serve'
 
@@ -72,21 +108,41 @@ def spawn(argv, log, env):
     # the Stop shortcut, rather than the browser or Terminal, owns service shutdown.
     with log.open('ab') as output:
         return subprocess.Popen(argv, cwd=ROOT, env=env, stdin=subprocess.DEVNULL,
-                                stdout=output, stderr=subprocess.STDOUT, start_new_session=True)
+                                stdout=output, stderr=subprocess.STDOUT,
+                                **({'creationflags': subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP}
+                                   if WINDOWS else {'start_new_session': True}))
+
+
+def ollama_executable(env):
+    executable = shutil.which('ollama', path=env.get('PATH'))
+    if executable:
+        return executable
+    if WINDOWS:
+        local = env.get('LOCALAPPDATA')
+        if local:
+            candidate = Path(local) / 'Programs' / 'Ollama' / 'ollama.exe'
+            if candidate.is_file():
+                return str(candidate)
+        raise RuntimeError(
+            'Ollama is not installed or could not be found. Install Ollama for Windows '
+            'from https://ollama.com/download/windows, reopen the launcher, '
+            'and download a model with: ollama pull qwen3:8b')
+    raise RuntimeError('Ollama was not found. Install it using the macOS setup in ReadMe.md.')
 
 
 def start(open_browser=True):
     directory = ROOT / '.agent47'
     directory.mkdir(exist_ok=True)
-    python = ROOT / '.venv/bin/python'
+    python = ROOT / ('.venv/Scripts/python.exe' if WINDOWS else '.venv/bin/python')
     if not python.exists():
         raise RuntimeError('Project Python environment is missing. Follow ReadMe.md first.')
     env = dict(os.environ, OLLAMA_NO_CLOUD='1', OLLAMA_HOST='127.0.0.1:11434')
-    env['PATH'] = '/opt/homebrew/bin:/usr/local/bin:' + env.get('PATH', '/usr/bin:/bin')
+    if not WINDOWS:
+        env['PATH'] = '/opt/homebrew/bin:/usr/local/bin:' + env.get('PATH', '/usr/bin:/bin')
     # Reuse existing healthy services; double-clicking Start twice must not create duplicates.
     pid = listener(11434)
     if pid is None:
-        runtime = spawn(['ollama', 'serve'], directory / 'ollama.log', env)
+        runtime = spawn([ollama_executable(env), 'serve'], directory / 'ollama.log', env)
         wait_ready(OLLAMA_URL + '/api/tags', runtime)
     else:
         request(OLLAMA_URL + '/api/tags')
@@ -102,10 +158,31 @@ def start(open_browser=True):
     if open_browser:
         webbrowser.open(URL)
     print(f'Agent47 is running: {URL}')
-    print('You may close this Terminal window. Use Stop Agent47.command to shut down.')
+    print('You may close this Terminal window. Use the Stop-Agent47 shortcut to shut down.')
 
 
 def stop_tree(pid):
+    if WINDOWS:
+        import psutil
+        try:
+            process = windows_process(pid)
+            processes = process.children(recursive=True)[::-1] + [process]
+        except psutil.NoSuchProcess:
+            return
+        # Process objects retain creation times, protecting against PID reuse.
+        for target in processes:
+            try:
+                target.terminate()
+            except psutil.NoSuchProcess:
+                pass
+        _, alive = psutil.wait_procs(processes, timeout=4)
+        for target in alive:
+            try:
+                target.kill()
+            except psutil.NoSuchProcess:
+                pass
+        psutil.wait_procs(alive, timeout=4)
+        return
     # Stop descendants too: a model runner or project test can outlive its parent otherwise.
     snapshot = subprocess.run(['/bin/ps', '-axo', 'pid=,ppid='], capture_output=True, text=True).stdout
     children = {}
@@ -170,7 +247,7 @@ def main():
     args = parser.parse_args()
     try:
         start(not args.no_browser) if args.action == 'start' else stop()
-    except (OSError, ValueError, RuntimeError) as exc:
+    except (OSError, ValueError, RuntimeError) + PROCESS_ERRORS as exc:
         print(f'Agent47: {exc}')
         raise SystemExit(1)
 

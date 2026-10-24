@@ -12,15 +12,35 @@ Model installation also needs internet access to download public model files thr
 
 ## Requirements
 
-- macOS with `/usr/bin/sandbox-exec` for command execution. Other operating systems are not validated, and command execution is disabled when that tool is absent.
+- macOS with `/usr/bin/sandbox-exec`, or Windows 10/11. Windows command execution requires Docker Desktop running Linux containers; chat and file tools work without Docker.
 - Python 3.11 or newer.
 - Ollama and a downloaded model that supports tool calling.
 - Enough disk space and memory for the model. The initial `qwen3:8b` download is about 5.2 GB, with additional memory needed during inference.
 - Language tools for the projects you want to build: Python, Clang/GCC, the .NET SDK, or Rust/Cargo as appropriate. Agent47 does not install these tools for you.
 
-The Python server uses the standard library. Its one packaged dependency, `pypdf`, provides local text extraction from PDFs. The frontend uses plain HTML, CSS, and JavaScript; there is no Node.js build step.
+The Python server uses the standard library. The `pypdf` dependency provides local text extraction from PDFs; Windows additionally installs `psutil` for process discovery and shutdown. The frontend uses plain HTML, CSS, and JavaScript; there is no Node.js build step.
 
-## First-time setup
+## Windows setup
+
+Install Python 3.11 or newer and [Ollama for Windows](https://ollama.com/download/windows). Open PowerShell in this repository:
+
+```powershell
+py -3 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+$env:OLLAMA_NO_CLOUD = "1"
+$env:OLLAMA_HOST = "127.0.0.1:11434"
+ollama serve
+```
+
+Quit any existing Ollama tray application first so these environment settings take effect. Double-click `Start-Agent47.cmd` to open Agent47, then use **Install a local model** and **Approve & download** to install a model from the interface. Alternatively, run `ollama pull qwen3:8b` in another PowerShell window. Use `Stop-Agent47.cmd` to shut down its services. Create Windows desktop shortcuts to these files if desired. The macOS `.command` launchers remain available.
+
+For command execution, install Docker Desktop, select Linux containers, and run `docker pull python:3.12-slim` once outside Agent47. Commands use this local image with the project mounted at `/workspace`; images are never downloaded automatically. Host Windows executables and toolchains are unavailable inside the container. For other languages, prepare a local Linux image with the required tools, set `$env:AGENT47_COMMAND_IMAGE = "your-image:tag"`, then launch `.\.venv\Scripts\python.exe -m agent47.launcher start` in that window. Restart services to change images.
+
+Containers have no network, a read-only system filesystem, bounded resources and disposable `/tmp`. Automatic checks get a read-only project; commands that need project writes require approval. Existing `.git`, `.agents`, `.codex` and `.agent47` entries remain read-only even after approval. Command edits do not receive file-tool backups. If Docker or the image is unavailable, execution fails without running on the host.
+
+Run Windows tests with `.\.venv\Scripts\python.exe -m unittest discover -s tests -v`.
+
+## First-time setup (macOS)
 
 Clone or download this repository, open a terminal in its directory, and create the project environment:
 
@@ -115,7 +135,7 @@ dotnet test --no-restore
 
 Adding flags, such as `-v`, makes the command require approval. Commands run as argument lists without a shell unless you explicitly approve a shell invocation.
 
-All commands, including approved ones, run under a macOS sandbox:
+On macOS, all commands, including approved ones, run under a macOS sandbox:
 
 - Network access is denied.
 - Writes are limited to the selected project and a temporary directory, with writes to selected internal folders blocked.
