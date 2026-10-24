@@ -28,3 +28,17 @@ This is a first working prototype. See SETUP.md for capabilities, isolation limi
 Merged origin/main commit 2ae14d6 into windows-support, preserving the Windows launcher, command isolation and existing macOS behavior. The combined application suite passed 32 tests with one macOS-only skip (33 total).
 
 Restarted the local Agent47 server and verified the new Install a local model panel in the browser. Both Qwen3 8B and 4B options appeared. Clicking Approve & download for the existing qwen3:8b model exercised the real Ollama pull endpoint, progress display, local capability validation and model selection, ending in the installed state. Existing model data was reused; this check did not perform a fresh multi-gigabyte transfer. Docker execution remains unverified on this machine.
+
+
+## macOS regression validation of windows-support (2026-10-23)
+
+Tested remote branch `windows-support` at `8b38f28` on the Apple M4 Mac with 16 GB memory before merging into main.
+
+- All 33 application tests passed on macOS with no skips, including actual macOS sandbox and loopback HTTP tests. The six Windows-specific tests exercise mocks and command construction; they do not constitute live Windows/Docker validation on this Mac.
+- JavaScript syntax, the four macOS launcher scripts, Git whitespace checks, and installed Python dependency consistency checks passed. Windows-only psutil remains conditional and is not required on macOS.
+- Actual startup and repeated startup reused the same server/runtime PIDs. Full shutdown removed both listeners; clean startup restored both services with matching process identities. The app was left running after validation.
+- The real guided-install endpoint successfully verified the existing qwen3:8b model and local tool support, reusing installed weights. No fresh multi-gigabyte model download was performed.
+- A real local-model task through the HTTP API read a disposable Python project, saved a subtraction-to-addition fix, retained the original in a backup, and ran both tests successfully inside the macOS sandbox. The test file's SHA-256 was unchanged. The selected workspace was reset to examples/demo afterward.
+- Disposable C and C++ examples compiled with Clang/Clang++ and ran successfully inside the macOS sandbox. xcrun reported denied access to its system temporary cache; compilation still returned zero and both binaries produced the expected output. No cache permission was broadened.
+
+No macOS functional regression was found in these checks. Rust/.NET execution and live Docker execution were not tested here; the documented toolchain and Windows container limitations still apply.

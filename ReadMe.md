@@ -18,7 +18,7 @@ Model installation also needs internet access to download public model files thr
 - Enough disk space and memory for the model. The initial `qwen3:8b` download is about 5.2 GB, with additional memory needed during inference.
 - Language tools for the projects you want to build: Python, Clang/GCC, the .NET SDK, or Rust/Cargo as appropriate. Agent47 does not install these tools for you.
 
-The Python server uses the standard library. Its one packaged dependency, `pypdf`, provides local text extraction from PDFs. The frontend uses plain HTML, CSS, and JavaScript; there is no Node.js build step.
+The Python server uses the standard library. The `pypdf` dependency provides local text extraction from PDFs; Windows additionally installs `psutil` for process discovery and shutdown. The frontend uses plain HTML, CSS, and JavaScript; there is no Node.js build step.
 
 ## Windows setup
 
