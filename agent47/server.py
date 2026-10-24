@@ -1,0 +1,100 @@
+import json
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+import secrets
+import threading
+from urllib.parse import urlparse
+from .core import Session, ollama
+
+STATIC = Path(__file__).parent / 'static'
+TOKEN = secrets.token_urlsafe(32)
+SESSION = None
+GUARD = threading.Lock()
+
+class Handler(BaseHTTPRequestHandler):
+    def log_message(self, *_): pass
+
+    def send(self, value, status=200, mime='application/json'):
+        data = json.dumps(value).encode() if mime == 'application/json' else value
+        self.send_response(status)
+        self.send_header('Content-Type', mime)
+        self.send_header('Content-Length', str(len(data)))
+        self.send_header('Cache-Control', 'no-store')
+        self.send_header('X-Content-Type-Options', 'nosniff')
+        self.send_header('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; frame-ancestors 'none'")
+        self.end_headers()
+        self.wfile.write(data)
+
+    def valid_host(self):
+        return self.headers.get('Host') == f'127.0.0.1:{self.server.server_port}'
+
+    def do_GET(self):
+        if not self.valid_host(): return self.send({'error': 'Invalid host'}, 403)
+        path = urlparse(self.path).path
+        if path == '/api/state':
+            if self.headers.get('X-Agent47-Token') != TOKEN: return self.send({'error': 'Forbidden'}, 403)
+            s = SESSION
+            return self.send({'status': s.status if s else 'idle', 'events': s.events if s else [],
+                'project': str(s.workspace.root) if s else None, 'model': s.model if s else None})
+        if path == '/api/bootstrap': return self.send({'token': TOKEN})
+        files = {'/': ('index.html', 'text/html'), '/app.js': ('app.js', 'text/javascript'), '/style.css': ('style.css', 'text/css')}
+        if path not in files: return self.send({'error': 'Not found'}, 404)
+        filename, mime = files[path]
+        self.send((STATIC / filename).read_bytes(), mime=mime)
+
+    def do_POST(self):
+        global SESSION
+        if not self.valid_host() or self.headers.get('X-Agent47-Token') != TOKEN:
+            return self.send({'error': 'Forbidden'}, 403)
+        origin = self.headers.get('Origin')
+        if origin and origin != f'http://127.0.0.1:{self.server.server_port}':
+            return self.send({'error': 'Invalid origin'}, 403)
+        try:
+            length = int(self.headers.get('Content-Length', 0))
+            if not 0 < length <= 300_000: raise ValueError('Invalid request size')
+            body = json.loads(self.rfile.read(length))
+            with GUARD:
+                if self.path == '/api/models':
+                    models = ollama('tags').get('models', [])
+                    return self.send({'models': [m['name'] for m in models if 'cloud' not in m['name'].lower()]})
+                if self.path == '/api/project':
+                    if SESSION and SESSION.status != 'idle': raise ValueError('Stop the current task before switching projects.')
+                    model = body['model']
+                    info = ollama('show', {'model': model})
+                    if 'cloud' in model.lower() or info.get('remote_host') or info.get('remote_model'):
+                        raise ValueError('Cloud models are disabled. Choose a downloaded local model.')
+                    if 'tools' not in info.get('capabilities', []): raise ValueError('Choose a model with tool calling support.')
+                    SESSION = Session(body['path'], model)
+                    return self.send({'ok': True})
+                s = SESSION
+                if s is None: raise ValueError('Select a project and model first.')
+                if self.path == '/api/chat':
+                    if s.status != 'idle': raise ValueError('A task is already running.')
+                    message = body['message'].strip()
+                    if not message or len(message) > 12000: raise ValueError('Message must be 1–12000 characters.')
+                    s.cancelled = False
+                    s.messages.append({'role': 'user', 'content': message})
+                    s.event('user', text=message)
+                    s.status = 'running'
+                    threading.Thread(target=s.loop, daemon=True).start()
+                elif self.path == '/api/approve':
+                    if not s.pending or s.pending['id'] != body['id']: raise ValueError('Approval is no longer pending.')
+                    if not isinstance(body['allow'], bool): raise ValueError('Invalid decision')
+                    s.pending['decision'] = body['allow']
+                elif self.path == '/api/stop': s.cancelled = True
+                else: return self.send({'error': 'Not found'}, 404)
+            self.send({'ok': True})
+        except Exception as exc:
+            self.send({'error': str(exc)}, 400)
+
+def main():
+    server = ThreadingHTTPServer(('127.0.0.1', 8747), Handler)
+    print('Agent47 is ready: http://127.0.0.1:8747', flush=True)
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        server.server_close()
+
+if __name__ == '__main__': main()

@@ -1,0 +1,2 @@
+# Local PDF text extraction.
+pypdf==6.21.2
