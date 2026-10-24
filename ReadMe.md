@@ -8,7 +8,7 @@ The current release is a working prototype, validated on an Apple M4 MacBook Pro
 
 Inference, project files, document extraction, backups, and conversation state are processed on your computer. The app contacts Ollama at `127.0.0.1:11434` and rejects cloud model metadata. It serves its interface at `127.0.0.1:8747`, with no hosted frontend assets or paid AI API dependency.
 
-Public web search is the exception: search terms are sent to Bing's public RSS endpoint, which returns titles, snippets, and links. The agent is instructed to use generic queries and avoid sending private project content without permission. That instruction is a model policy, not a guaranteed data-loss prevention system. Coding and document tools can work offline once the model and dependencies are downloaded; web search needs internet access.
+Model installation also needs internet access to download public model files through Ollama; it does not send project files. Public web search is another network feature: search terms are sent to Bing's public RSS endpoint, which returns titles, snippets, and links. The agent is instructed to use generic queries and avoid sending private project content without permission. That instruction is a model policy, not a guaranteed data-loss prevention system. Coding and document tools can work offline once the model and dependencies are downloaded; web search needs internet access.
 
 ## Requirements
 
@@ -63,7 +63,9 @@ For the Homebrew installation, start Ollama in a separate terminal with cloud fe
 OLLAMA_NO_CLOUD=1 OLLAMA_HOST=127.0.0.1:11434 ollama serve
 ```
 
-Keep that terminal open. In another terminal, download the initial model:
+Keep that terminal open. You can now start Agent47 and use its model setup screen: when no models are installed, it opens automatically. Choose **Qwen3 8B** (about 5.2 GB) or **Qwen3 4B** (about 2.5 GB), review the details, and click **Approve & download**. Progress and errors appear in the browser, and a successful installation is selected automatically. **Install a local model** keeps this flow available later.
+
+Alternatively, download the initial model yourself in another terminal:
 
 ```sh
 ollama pull qwen3:8b
@@ -105,7 +107,7 @@ If Ollama is already running, you can start just the app in the foreground (keep
 
 ## Use a workspace
 
-1. Refresh the model list and select a local model.
+1. Refresh the model list and select a local model. If none are installed, follow the setup prompt to approve a download or view the manual instructions.
 2. Enter the absolute path of a trusted project folder, such as `/Users/you/projects/my-app`.
 3. Click **Open workspace**. The agent can access one selected project at a time.
 4. Start with a read-only task: “Inspect this project and summarize its structure. Do not change files yet.”
@@ -181,6 +183,7 @@ This version uses bounded file listing and plain text search for context. Embedd
 | Path | Purpose |
 | --- | --- |
 | `agent47/core.py` | Ollama client, workspace tools, command policy/sandbox, web search, and agent loop |
+| `agent47/model_setup.py` | Approved model choices, background downloads, progress and readiness checks |
 | `agent47/server.py` | Loopback HTTP server, model/workspace setup, chat, approvals, and stop endpoints |
 | `agent47/static/` | Browser interface; no build process required |
 | `Start-Agent47.command` / `Stop-Agent47.command` | Start/open or shut down local services |
@@ -206,6 +209,8 @@ Run the demo tests separately:
 cd examples/demo
 ../../.venv/bin/python -m unittest discover -v
 ```
+
+Model setup has simulated streaming download and HTTP approval tests; these do not download model files. Only the two offered local models can be installed through the browser, and only one download runs at a time. The coding agent cannot initiate model installation. Ollama itself must already be installed and running; the UI links to its official installer when unavailable. Browser setup uses Ollama’s native [pull API](https://docs.ollama.com/api/pull), and download sizes are approximate.
 
 The application suite includes a mocked Ollama tool cycle and does not require a running model. PDF coverage needs the installed dependency; command sandbox tests require macOS, and HTTP tests need permission to bind a local loopback port. The initial validation passed 12 application tests and a real-model repair task with two passing demo tests; see [VALIDATION.md](VALIDATION.md).
 

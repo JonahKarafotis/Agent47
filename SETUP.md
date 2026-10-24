@@ -16,7 +16,9 @@ For a Homebrew installation, start the server in a separate terminal:
 OLLAMA_NO_CLOUD=1 OLLAMA_HOST=127.0.0.1:11434 ollama serve
 ```
 
-Then download the initial model if needed:
+When no models are installed, Agent47 automatically opens **Set up your local AI**. Select a model and click **Approve & download** to install it, or expand the manual instructions. Keep the server and Ollama running while downloading. Reopening the page restores progress while that server remains running. If a download fails, **Approve & retry download** starts another attempt; Ollama may reuse downloaded data. After a successful download, the model is checked for local tool support and selected automatically.
+
+Alternatively, download the initial model manually if needed:
 
 ```sh
 ollama pull qwen3:8b
