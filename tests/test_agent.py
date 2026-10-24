@@ -11,6 +11,7 @@ from http.server import ThreadingHTTPServer
 from agent47.core import Workspace, Session, command_needs_approval, run_command
 from agent47 import server
 
+# Each test gets a disposable project so tests never edit real project files.
 class WorkspaceTests(unittest.TestCase):
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
@@ -101,6 +102,7 @@ except PermissionError:
         with (self.root / 'document.pdf').open('wb') as output: writer.write(output)
         self.assertIn('Local document 47', self.workspace.read('document.pdf'))
 
+    # Fake model responses exercise the tool cycle without downloading or running an AI model.
     def test_tool_loop(self):
         session = Session(self.root, 'fake')
         replies = [{'message': {'role':'assistant','content':'','tool_calls':[{'function':{'name':'write_file','arguments':{'path':'hello.py','content':'print(47)\n'}}}]}},
@@ -127,6 +129,7 @@ except PermissionError:
             command.assert_not_called()
         self.assertEqual(session.status, 'idle')
 
+# A temporary loopback server checks the browser-facing API and request protections.
 class HTTPTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
