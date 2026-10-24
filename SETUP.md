@@ -74,3 +74,11 @@ Queries leave the machine. Generic queries are encouraged by the model prompt, b
 Use trusted projects and review generated changes. Resolved path checks and macOS command isolation reduce accidental access, but the prototype is not hardened against hostile repositories or concurrent filesystem changes. Command-generated modifications do not get file-tool backups. Use version control and keep `.agent47/` ignored in each selected project.
 
 For recorded test results, see [VALIDATION.md](VALIDATION.md).
+
+## Windows troubleshooting
+
+Use the Windows setup in ReadMe.md and the `.cmd` launchers. The environment executable is `.venv/Scripts/python.exe`; requirements include Windows-only psutil for service discovery and shutdown. macOS keeps its existing launchers and sandbox.
+
+If process inspection is denied, check whether the listener belongs to an elevated application or another user. Stop that application through its own controls: the launcher must verify identity before stopping services.
+
+Docker Desktop must run Linux containers and the selected image must already be downloaded. The default image includes Python only. Use Linux paths in command arguments; host drive paths are not translated. Automatic commands have a read-only project, so builds writing output require approval. Docker errors never trigger unrestricted host execution.
