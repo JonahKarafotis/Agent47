@@ -64,3 +64,15 @@ header{padding:20px}
 #welcome{margin:25px 0}
 h2{font-size:32px}
 }
+
+/* First-run model setup stays available even when the conversation is empty. */
+[hidden]{display:none!important}
+aside{overflow-y:auto}
+#model-setup{margin-top:18px;padding:16px;background:#fafbf7;border:1px solid #d5dcd1;border-radius:10px}
+#model-setup h2{font-size:22px;letter-spacing:-.6px;margin:0 0 12px}
+#model-setup p,#model-setup a{font-size:12px;letter-spacing:0;overflow-wrap:anywhere}
+#model-setup a{color:#2e543c}
+#model-setup pre{font-size:11px}
+#model-setup .primary{width:100%;margin:8px 0}
+#setup-toggle{width:100%;font-size:12px}
+#install-progress{width:100%;accent-color:#2e543c;margin-top:12px}

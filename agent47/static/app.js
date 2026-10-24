@@ -1,6 +1,8 @@
 // The browser displays state; Python owns the conversation and executes tools.
 // rendered counts events already shown, so polling does not duplicate messages.
 let token = '', rendered = 0, busy = false, initialized = false;
+let workspaceReady = false;
+let runtimeAvailable = false, installState = 'idle', setupOptions = [], lastInstallSuccess = '';
 const $ = id => document.getElementById(id);
 
 // All API calls share JSON encoding and the token received during bootstrap.
@@ -24,18 +26,94 @@ function notice(text) {
 async function models() {
   try {
     const data = await api('models', {});
+    runtimeAvailable = true;
+    const previous = $('model').value;
     $('model').replaceChildren(...data.models.map(name => {
       const item = document.createElement('option');
       item.value = name;
       item.textContent = name;
       return item;
     }));
-    notice(data.models.length ? 'Choose a downloaded model.' : 'No local models found. See SETUP.md.');
+    if (data.models.includes(previous)) $('model').value = previous;
+    if (!data.models.length) {
+      $('model-setup').hidden = false;
+      notice('No local models installed. Choose an option below to get started.');
+    } else {
+      notice('Choose a downloaded model, or install another below.');
+    }
+    $('connect').disabled = busy || !data.models.length || installState === 'downloading';
   } catch (e) {
+    runtimeAvailable = false;
+    $('model-setup').hidden = false;
     notice('Ollama is unavailable. Start Ollama, then refresh. ' + e.message);
   }
 }
 $('refresh').onclick = models;
+
+// Model installation is a separate human-approved setup flow, not a coding tool.
+function describeModel() {
+  const choice = setupOptions.find(item => item.name === $('install-model').value);
+  if (!choice) return;
+  $('model-description').textContent = choice.size + '. ' + choice.description;
+  $('model-source').href = choice.source;
+  $('install-command').textContent = 'ollama pull ' + choice.name;
+}
+$('install-model').onchange = describeModel;
+$('setup-toggle').onclick = () => { $('model-setup').hidden = !$('model-setup').hidden; };
+$('install').onclick = async () => {
+  $('install').disabled = true;
+  try {
+    await api('models/install', {model: $('install-model').value, approved: true});
+    lastInstallSuccess = '';
+    await setup();
+  } catch (e) {
+    $('install-status').textContent = e.message;
+    $('install').disabled = !runtimeAvailable || busy;
+  }
+};
+
+async function setup() {
+  const data = await api('setup');
+  if (!setupOptions.length) {
+    setupOptions = data.options;
+    $('install-model').replaceChildren(...setupOptions.map(choice => {
+      const option = document.createElement('option');
+      option.value = choice.name;
+      option.textContent = choice.label + ' (' + choice.size + ')';
+      return option;
+    }));
+    describeModel();
+  }
+  const job = data.installation;
+  installState = job.status;
+  const downloading = job.status === 'downloading';
+  $('install').disabled = downloading || busy || !runtimeAvailable;
+  $('install-model').disabled = downloading;
+  $('install').textContent = job.status === 'error' ? 'Approve & retry download' : 'Approve & download';
+  $('install-progress').hidden = !downloading;
+  if (downloading) {
+    $('model-setup').hidden = false;
+    $('install-model').value = job.model;
+    describeModel();
+    if (job.total > 0) {
+      $('install-progress').max = job.total;
+      $('install-progress').value = job.completed;
+    } else {
+      $('install-progress').removeAttribute('value');
+    }
+  }
+  const progress = downloading && job.total > 0 ? ' ' + Math.floor(job.completed / job.total * 100) + '% of this layer.' : '';
+  $('install-status').textContent = job.message + progress;
+  if (job.status === 'success' && lastInstallSuccess !== job.model) {
+    lastInstallSuccess = job.model;
+    await models();
+    $('model').value = job.model;
+    notice('Model installed and selected. Choose your project folder to begin.');
+  }
+  $('connect').disabled = busy || downloading || !runtimeAvailable || !$('model').value;
+  $('send').disabled = busy || downloading || !workspaceReady;
+}
+
 
 // Opening a workspace creates a fresh server session, so clear the old feed too.
 $('connect').onclick = async () => {
@@ -108,12 +186,14 @@ async function poll() {
       initialized = true;
     }
     busy = state.status !== 'idle';
+    workspaceReady = Boolean(state.project);
     $('status').textContent = state.status;
     $('workspace').textContent = state.project || 'Choose a project to begin';
     $('send').disabled = busy || !state.project;
-    $('connect').disabled = busy;
+    $('connect').disabled = busy || installState === 'downloading' || !$('model').value;
     state.events.slice(rendered).forEach(render);
     rendered = state.events.length;
+    await setup();
   } catch (e) {
     notice(e.message);
   }
@@ -155,6 +235,7 @@ document.querySelectorAll('[data-prompt]').forEach(button => button.onclick = ()
     await poll();
     setInterval(poll, 1200);
     await models();
+    await setup();
   } catch (e) {
     notice(e.message);
   }

@@ -6,6 +6,7 @@ import secrets
 import threading
 from urllib.parse import urlparse
 from .core import Session, ollama
+from .model_setup import INSTALLER, MODELS
 
 STATIC = Path(__file__).parent / 'static'
 # A new random token is issued for each server process. The same-origin frontend
@@ -40,6 +41,9 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if not self.valid_host(): return self.send({'error': 'Invalid host'}, 403)
         path = urlparse(self.path).path
+        if path == '/api/setup':
+            if self.headers.get('X-Agent47-Token') != TOKEN: return self.send({'error': 'Forbidden'}, 403)
+            return self.send({'options': MODELS, 'installation': INSTALLER.snapshot()})
         if path == '/api/state':
             if self.headers.get('X-Agent47-Token') != TOKEN: return self.send({'error': 'Forbidden'}, 403)
             s = SESSION
@@ -68,7 +72,15 @@ class Handler(BaseHTTPRequestHandler):
                 if self.path == '/api/models':
                     models = ollama('tags').get('models', [])
                     return self.send({'models': [m['name'] for m in models if 'cloud' not in m['name'].lower()]})
+                # Only a direct, authenticated UI request can approve downloading a model.
+                # This endpoint is deliberately not exposed as an agent tool.
+                if self.path == '/api/models/install':
+                    if SESSION and SESSION.status != 'idle': raise ValueError('Finish the current task before downloading a model.')
+                    INSTALLER.start(body.get('model'), body.get('approved'))
+                    return self.send({'ok': True})
                 # Selecting a workspace validates the model and replaces all conversation state.
+                if self.path in {'/api/project', '/api/chat'} and INSTALLER.snapshot()['status'] == 'downloading':
+                    raise ValueError('Wait for the model download to finish before starting a task or opening a workspace.')
                 if self.path == '/api/project':
                     if SESSION and SESSION.status != 'idle': raise ValueError('Stop the current task before switching projects.')
                     model = body['model']
